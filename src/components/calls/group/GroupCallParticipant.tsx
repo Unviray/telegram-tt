@@ -2,12 +2,13 @@ import { GroupCallParticipant as TypeGroupCallParticipant, THRESHOLD } from '../
 import React, {
   FC, memo, useMemo, useRef,
 } from '../../../lib/teact/teact';
-import { withGlobal } from '../../../lib/teact/teactn';
+import { getDispatch, withGlobal } from '../../../lib/teact/teactn';
 
 import { ApiChat, ApiUser } from '../../../api/types';
 
 import buildClassName from '../../../util/buildClassName';
 import { selectChat, selectUser } from '../../../modules/selectors';
+import { selectIsAdminInActiveGroupCall } from '../../../modules/selectors/calls';
 import useLang from '../../../hooks/useLang';
 import { GROUP_CALL_DEFAULT_VOLUME, GROUP_CALL_VOLUME_MULTIPLIER } from '../../../config';
 
@@ -24,6 +25,7 @@ type OwnProps = {
 type StateProps = {
   user?: ApiUser;
   chat?: ApiChat;
+  isAdmin: boolean;
 };
 
 const GroupCallParticipant: FC<OwnProps & StateProps> = ({
@@ -31,18 +33,33 @@ const GroupCallParticipant: FC<OwnProps & StateProps> = ({
   participant,
   user,
   chat,
+  isAdmin,
 }) => {
   // eslint-disable-next-line no-null/no-null
   const anchorRef = useRef<HTMLDivElement>(null);
   const lang = useLang();
 
-  const { isSelf, isMutedByMe, isMuted } = participant;
+  const {
+    toggleGroupCallMute,
+  } = getDispatch();
+
+  const { isSelf, isMutedByMe, canSelfUnmute, isMuted } = participant;
+  const shouldRaiseHand = !canSelfUnmute && isMuted;
   const isSpeaking = (participant.amplitude || 0) > THRESHOLD;
   const isRaiseHand = Boolean(participant.raiseHandRating);
 
   const handleOnClick = () => {
     if (isSelf) return;
     openParticipantMenu(anchorRef.current!, participant);
+  };
+
+  const handleMicClick = (event:any) => {
+    event.stopPropagation();
+
+    toggleGroupCallMute({
+      participantId: participant?.id,
+      value: isAdmin ? !shouldRaiseHand : !isMutedByMe,
+    });
   };
 
   const [aboutText, aboutColor] = useMemo(() => {
@@ -84,7 +101,7 @@ const GroupCallParticipant: FC<OwnProps & StateProps> = ({
         <span className="name">{name}</span>
         <span className={buildClassName('about', aboutColor)}>{aboutText}</span>
       </div>
-      <div className="microphone">
+      <div className="microphone" onClick={handleMicClick}>
         <OutlinedMicrophoneIcon participant={participant} />
       </div>
     </div>
@@ -96,6 +113,7 @@ export default memo(withGlobal<OwnProps>(
     return {
       user: participant.isUser ? selectUser(global, participant.id) : undefined,
       chat: !participant.isUser ? selectChat(global, participant.id) : undefined,
+      isAdmin: selectIsAdminInActiveGroupCall(global),
     };
   },
 )(GroupCallParticipant));
